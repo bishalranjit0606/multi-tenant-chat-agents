@@ -13,7 +13,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
 from shop.agents import run_message, setup_langsmith, stream_message
-from shop.auth import login, logout, session_for, signup
+from shop.auth import advance_order, login, logout, session_for, signup
 from shop.db import ENTRIES, connect
 
 MISSING_KEY = "Set GROQ_API_KEY to use the Groq chat model."
@@ -116,6 +116,11 @@ class ConversationIn(BaseModel):
 class RenameIn(BaseModel):
     model_config = ConfigDict(extra="allow")
     title: str
+
+
+class OrderStatusIn(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    status: str
 
 
 def shop_entry(slug):
@@ -322,7 +327,12 @@ def login_route(body: LoginIn, db_path: str = Depends(get_db)):
     result = login_user(db_path, body.email, body.password, body.shop)
     if not result or not result.get("ok"):
         raise HTTPException(status_code=401, detail="Email or password is wrong.")
-    return {"token": result["token"], "tokenType": "Bearer", "orgId": result["orgId"]}
+    return {
+        "token": result["token"],
+        "tokenType": "Bearer",
+        "orgId": result["orgId"],
+        "role": result.get("role"),
+    }
 
 
 @app.post("/logout")
@@ -333,6 +343,28 @@ def logout_route(
     token, _session = require_session(db_path, authorization)
     logout(db_path, token)
     return {"ok": True}
+
+
+@app.post("/shops/{slug}/orders/{order_id}/status")
+def advance_order_status_route(
+    slug: str,
+    order_id: str,
+    body: OrderStatusIn,
+    db_path: str = Depends(get_db),
+    authorization: str | None = Header(default=None),
+):
+    entry = shop_entry(slug)
+    token, session = require_session(db_path, authorization)
+    if session["orgId"] != ENTRIES[entry]:
+        raise HTTPException(status_code=403, detail="This login is for another shop.")
+    if entry != "tea":
+        raise HTTPException(status_code=404, detail="Order status advance is for the tea shop.")
+    result = advance_order(db_path, token, order_id, body.status)
+    if result.get("code") == "admin_only":
+        raise HTTPException(status_code=403, detail=result.get("message") or "Admin only.")
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("message") or "Could not update that order.")
+    return {"orderId": result["orderId"], "status": result["status"]}
 
 
 def _prepare_chat(slug, body, db_path, authorization):

@@ -1096,4 +1096,6 @@ def run_tool(store, action, ctx):
         return cancel_booking(store, data)
     if action == "list_my_bookings":
         return list_my_bookings(store, data)
+    if action == "advance_order_status":
+        return advance_order_status(store, data)
     return fail("unknown_tool", "That tool is not on this agent.")

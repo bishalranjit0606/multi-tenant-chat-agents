@@ -58,6 +58,14 @@ def test_seed_has_the_promised_rows():
     assert len([row for row in seed["bookings"] if row["customerId"] == "b_arun"]) >= 1
     assert len([row for row in seed["knowledge"] if row["orgId"] == "org_a"]) >= 15
     assert len([row for row in seed["knowledge"] if row["orgId"] == "org_b"]) >= 15
+    assert len([
+        row for row in seed["knowledge"]
+        if row["orgId"] == "org_a" and row["document"] == "FAQ"
+    ]) >= 15
+    assert len([
+        row for row in seed["knowledge"]
+        if row["orgId"] == "org_b" and row["document"] == "FAQ"
+    ]) >= 15
 
 
 def test_quote_does_not_save():

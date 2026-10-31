@@ -189,6 +189,27 @@ def test_tea_token_cannot_list_studio_bookings(tmp_path, monkeypatch):
     assert "book_maya_past" not in listed.text
 
 
+def test_admin_can_advance_order_status_and_customer_cannot(tmp_path, monkeypatch):
+    path = seed_database(tmp_path / "shop.db")
+    monkeypatch.setenv("SHOP_DB", str(path))
+    client = TestClient(api.app)
+    customer = client.post("/login", json={"email": "nima@himali.test", "password": DEV_PASSWORD}).json()["token"]
+    admin = client.post("/login", json={"email": "admin@himali.test", "password": DEV_PASSWORD}).json()["token"]
+    denied = client.post(
+        "/shops/himali-tea/orders/ord_nima_last/status",
+        json={"status": "confirmed"},
+        headers=auth_header(customer),
+    )
+    assert denied.status_code == 403
+    advanced = client.post(
+        "/shops/himali-tea/orders/ord_nima_last/status",
+        json={"status": "confirmed"},
+        headers=auth_header(admin),
+    )
+    assert advanced.status_code == 200
+    assert advanced.json()["status"] == "confirmed"
+
+
 def test_user_cannot_rename_another_users_conversation(tmp_path, monkeypatch):
     path = seed_database(tmp_path / "shop.db")
     monkeypatch.setenv("SHOP_DB", str(path))

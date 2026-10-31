@@ -517,6 +517,72 @@ seed = json.loads(r"""
       "text": "Wholesale tins start at 20 packs. Ask the chat for the wholesale list."
     },
     {
+      "orgId": "org_a",
+      "document": "FAQ",
+      "section": "Shelf life",
+      "text": "Most sealed packs stay fresh for 12 months. Matcha is best within 3 months of opening."
+    },
+    {
+      "orgId": "org_a",
+      "document": "FAQ",
+      "section": "Allergens",
+      "text": "Plain leaf tea has no nuts. Flavoured blends list allergens on the tin label."
+    },
+    {
+      "orgId": "org_a",
+      "document": "FAQ",
+      "section": "Organic",
+      "text": "Ilam green and black lines are certified organic. Look for the organic mark on the pack."
+    },
+    {
+      "orgId": "org_a",
+      "document": "FAQ",
+      "section": "Reorder",
+      "text": "Say same as last time in chat to reorder. We re-check stock and the current price first."
+    },
+    {
+      "orgId": "org_a",
+      "document": "FAQ",
+      "section": "Minimum order",
+      "text": "There is no minimum for retail. Wholesale starts at 20 packs of one SKU."
+    },
+    {
+      "orgId": "org_a",
+      "document": "FAQ",
+      "section": "Track order",
+      "text": "Ask the chat for your order id. Pending orders can still be edited or cancelled."
+    },
+    {
+      "orgId": "org_a",
+      "document": "FAQ",
+      "section": "Payment methods",
+      "text": "We take cash on delivery. Card payment at the door is not available yet."
+    },
+    {
+      "orgId": "org_a",
+      "document": "FAQ",
+      "section": "Sample packs",
+      "text": "Sample tins are 15g. They use the same leaf as the full pack."
+    },
+    {
+      "orgId": "org_a",
+      "document": "FAQ",
+      "section": "Water temperature",
+      "text": "Use cooler water for green tea. Boiling water can make green tea bitter."
+    },
+    {
+      "orgId": "org_a",
+      "document": "FAQ",
+      "section": "Loose leaf vs bags",
+      "text": "We sell loose leaf and matcha. We do not sell paper tea bags."
+    },
+    {
+      "orgId": "org_a",
+      "document": "FAQ",
+      "section": "Same day delivery",
+      "text": "Same day delivery inside Kathmandu is only for orders placed before 11:00."
+    },
+    {
       "orgId": "org_b",
       "document": "About",
       "section": "The studio",
@@ -605,6 +671,72 @@ seed = json.loads(r"""
       "document": "FAQ",
       "section": "Gift cards",
       "text": "Gift cards are sold at the desk. The chat can book a time, not sell a card."
+    },
+    {
+      "orgId": "org_b",
+      "document": "FAQ",
+      "section": "How to book",
+      "text": "Log in on the studio chat and ask for a service and time. The agent confirms before booking."
+    },
+    {
+      "orgId": "org_b",
+      "document": "FAQ",
+      "section": "Reschedule",
+      "text": "You can reschedule if the new slot is free. A conflicting move is refused with nearby options."
+    },
+    {
+      "orgId": "org_b",
+      "document": "FAQ",
+      "section": "Time zone",
+      "text": "All times are Asia/Kathmandu. Next Tuesday afternoon means 14:00 there."
+    },
+    {
+      "orgId": "org_b",
+      "document": "FAQ",
+      "section": "Group yoga size",
+      "text": "Yoga group class holds up to 12 people. Arrive early to keep your mat space."
+    },
+    {
+      "orgId": "org_b",
+      "document": "FAQ",
+      "section": "Physio home plan",
+      "text": "Each physiotherapy visit includes a short home plan you can follow between sessions."
+    },
+    {
+      "orgId": "org_b",
+      "document": "FAQ",
+      "section": "Prenatal massage",
+      "text": "Prenatal massage needs a clear second trimester note. Anita leads those sessions."
+    },
+    {
+      "orgId": "org_b",
+      "document": "FAQ",
+      "section": "Deep tissue aftercare",
+      "text": "Drink water after deep tissue work. Mild soreness for one day is normal."
+    },
+    {
+      "orgId": "org_b",
+      "document": "FAQ",
+      "section": "Packages",
+      "text": "Four-session packages are sold at the desk. The chat books single visits."
+    },
+    {
+      "orgId": "org_b",
+      "document": "FAQ",
+      "section": "Illness",
+      "text": "Stay home if you have a fever. Message the chat to cancel under the studio policy."
+    },
+    {
+      "orgId": "org_b",
+      "document": "FAQ",
+      "section": "Gender preference",
+      "text": "You can ask for a practitioner by name. Availability still depends on open slots."
+    },
+    {
+      "orgId": "org_b",
+      "document": "FAQ",
+      "section": "Payment at studio",
+      "text": "Pay at the desk after the session. Cash and local cards are accepted there."
     }
   ]
 }

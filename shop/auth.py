@@ -14,7 +14,7 @@ from shop.db import (
     load_store,
     save_shop_writes,
 )
-from shop.rules import fail, run_tool
+from shop.rules import advance_order_status, fail, run_tool
 
 
 def hash_password(password):
@@ -125,6 +125,7 @@ WRITES = {
     "create_booking",
     "reschedule_booking",
     "cancel_booking",
+    "advance_order_status",
 }
 
 
@@ -139,5 +140,22 @@ def read_shop(db_path, token, action, args=None):
         "args": args or {},
     })
     if action in WRITES and isinstance(result, dict) and result.get("ok"):
+        save_shop_writes(db_path, store)
+    return result
+
+
+def advance_order(db_path, token, order_id, status):
+    session = session_for(db_path, token)
+    if not session:
+        return fail("logged_out", "Log in first.")
+    if session.get("role") != "admin":
+        return fail("admin_only", "Only a shop admin can advance order status.")
+    store = load_store(db_path)
+    result = advance_order_status(store, {
+        "orgId": session["orgId"],
+        "orderId": order_id,
+        "status": status,
+    })
+    if isinstance(result, dict) and result.get("ok"):
         save_shop_writes(db_path, store)
     return result

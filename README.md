@@ -14,9 +14,8 @@ cp .env.example .env
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python -m shop.db
-python -m shop.knowledge
-python -m uvicorn shop.api:app --host 127.0.0.1 --port 8000
+make seed
+make api
 ```
 
 In another terminal, start the page:
@@ -30,11 +29,14 @@ The API is http://127.0.0.1:8000. The page is http://127.0.0.1:5173.
 Put your own keys in `.env`. Chat needs `GROQ_API_KEY`. Embeddings use `GEMINI_API_KEY` when set.
 LangSmith tracing turns on when `LANGSMITH_API_KEY` is set (`LANGSMITH_TRACING=true`, project `LANGSMITH_PROJECT`).
 
-Run tests with:
+Run tests and eval with:
 
 ```
-python -m pytest
+make test
+make eval
 ```
+
+`make eval` is the same as `python -m eval.run_eval`. It uses a fake tool planner and checks Postgres after each case. It does not call Groq.
 
 ## How a request runs
 
@@ -58,11 +60,20 @@ The page reads Server-Sent Events (`token`, `tool`, `citation`, `done`) so the r
 
 Dev password: `devpass`
 
-- bishal@gmail.com, customer, tea
-- bishal@gmail.com, customer, studio
-
+- nima@himali.test, customer, tea
+- admin@himali.test, admin, tea
+- maya@lotus.test, customer, studio
+- admin@lotus.test, admin, studio
 
 Signup on the tea URL saves org_a. Signup on the studio URL saves org_b. Signup creates a customer, not an admin. The database stores a bcrypt hash, not the plain password.
+
+Advance a tea order status (admin only):
+
+```
+make advance ORDER=ord_nima_last STATUS=confirmed
+```
+
+Or `POST /shops/himali-tea/orders/{orderId}/status` with `{"status":"shipped"}` and an admin Bearer token.
 
 ## How the shops stay apart
 
@@ -74,9 +85,18 @@ The database reads orders, bookings, and chats with that session's shop and user
 ## Knowledge (RAG)
 
 Chunking is by document section. One knowledge row is one chunk. There is no fixed-size split and no chunk overlap.
+Each shop has at least 15 FAQ Q&A rows, plus About / policy / brewing or service notes.
 Search filters by `org_id` first, then ranks with pgvector, then returns top-3 (`limit=3`).
 Citations show the document and the section.
 Tests use a local hash embedder. Live embeds use Gemini (`gemini-embedding-001`) when `GEMINI_API_KEY` is set.
+
+## Eval
+
+`make eval` runs 12 tea cases and 12 studio cases (24 total). Latest run: **24 pass, 0 fail**.
+
+Coverage includes knowledge citations, unanswered questions, confirm gates, stock limits, cancel rules, reorder, booking conflicts, opening hours, cross-org access, and prompt injection. Each case checks reply text and Postgres rows after the tools run.
+
+Failures and fixes: none on the current suite. If a case fails after a rules change, keep the case and fix the rule or the fake planner in `eval/run_eval.py`.
 
 ## Chat model and booking lock
 
