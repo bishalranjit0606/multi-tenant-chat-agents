@@ -1,0 +1,10 @@
+pytest
+bcrypt
+fastapi
+uvicorn
+httpx
+psycopg[binary]
+langchain-openai
+langgraph==1.2.18
+langchain-core==1.7.3
+langsmith
