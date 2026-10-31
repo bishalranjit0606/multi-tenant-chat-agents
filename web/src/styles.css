@@ -516,6 +516,36 @@ textarea { min-height: 96px; resize: vertical; }
 
 .status { margin: 16px 24px 0; }
 
+.admin-desk {
+  margin: 16px 24px 32px;
+  overflow-x: auto;
+}
+
+.admin-desk h2 {
+  margin: 0 0 12px;
+  font-size: 22px;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  background: var(--card);
+}
+
+.admin-table th,
+.admin-table td {
+  border: 1px solid var(--line);
+  padding: 10px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.admin-table th {
+  font-weight: 600;
+  background: color-mix(in srgb, var(--accent) 12%, var(--card));
+}
+
 .chats, .mine, .messages {
   scrollbar-color: var(--line) transparent;
 }

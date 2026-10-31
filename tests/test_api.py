@@ -73,7 +73,7 @@ def test_login_gives_a_bearer_token_and_logout_blocks_chat(tmp_path, monkeypatch
     monkeypatch.setattr(api, "run_message", fake_reply)
     client = TestClient(api.app)
     logged = client.post("/login", json={
-        "email": "nima@himali.test",
+        "email": "bishal@tea.com",
         "password": DEV_PASSWORD,
         "orgId": "org_b",
         "shopId": "lotus-studio",
@@ -100,7 +100,7 @@ def test_tea_token_cannot_call_the_studio(tmp_path, monkeypatch):
 
     monkeypatch.setattr(api, "run_message", spy)
     client = TestClient(api.app)
-    token = client.post("/login", json={"email": "nima@himali.test", "password": DEV_PASSWORD}).json()["token"]
+    token = client.post("/login", json={"email": "bishal@tea.com", "password": DEV_PASSWORD}).json()["token"]
     denied = client.post(
         "/shops/lotus-studio/chat",
         json={"message": "book a massage", "orgId": "org_b"},
@@ -121,7 +121,7 @@ def test_body_shop_id_does_not_switch_the_shop(tmp_path, monkeypatch):
 
     monkeypatch.setattr(api, "run_message", spy)
     client = TestClient(api.app)
-    token = client.post("/login", json={"email": "nima@himali.test", "password": DEV_PASSWORD}).json()["token"]
+    token = client.post("/login", json={"email": "bishal@tea.com", "password": DEV_PASSWORD}).json()["token"]
     chat = client.post(
         "/shops/himali-tea/chat",
         json={"message": "price of jasmine", "orgId": "org_b", "shopId": "lotus-studio"},
@@ -141,7 +141,7 @@ def test_message_21_in_the_same_minute_returns_429(tmp_path, monkeypatch):
     monkeypatch.setattr(api, "run_message", fake_reply)
     api.hits.clear()
     client = TestClient(api.app)
-    token = client.post("/login", json={"email": "nima@himali.test", "password": DEV_PASSWORD}).json()["token"]
+    token = client.post("/login", json={"email": "bishal@tea.com", "password": DEV_PASSWORD}).json()["token"]
     headers = auth_header(token)
     for _ in range(20):
         ok = client.post("/shops/himali-tea/chat", json={"message": "hi"}, headers=headers)
@@ -161,7 +161,7 @@ def test_chat_uses_a_fake_agent_and_does_not_call_the_network(tmp_path, monkeypa
     monkeypatch.setattr(socket.socket, "connect", blocked)
     monkeypatch.setattr(api, "run_message", fake_reply)
     client = TestClient(api.app)
-    token = client.post("/login", json={"email": "nima@himali.test", "password": DEV_PASSWORD}).json()["token"]
+    token = client.post("/login", json={"email": "bishal@tea.com", "password": DEV_PASSWORD}).json()["token"]
     chat = client.post("/shops/himali-tea/chat", json={"message": "hello"}, headers=auth_header(token))
     assert chat.status_code == 200
     assert chat.json()["tools"] == ["search_products"]
@@ -171,7 +171,7 @@ def test_tea_token_lists_only_that_users_orders(tmp_path, monkeypatch):
     path = seed_database(tmp_path / "shop.db")
     monkeypatch.setenv("SHOP_DB", str(path))
     client = TestClient(api.app)
-    token = client.post("/login", json={"email": "nima@himali.test", "password": DEV_PASSWORD}).json()["token"]
+    token = client.post("/login", json={"email": "bishal@tea.com", "password": DEV_PASSWORD}).json()["token"]
     listed = client.get("/me/orders", headers=auth_header(token))
     assert listed.status_code == 200
     ids = [row["id"] for row in listed.json()["orders"]]
@@ -183,7 +183,7 @@ def test_tea_token_cannot_list_studio_bookings(tmp_path, monkeypatch):
     path = seed_database(tmp_path / "shop.db")
     monkeypatch.setenv("SHOP_DB", str(path))
     client = TestClient(api.app)
-    token = client.post("/login", json={"email": "nima@himali.test", "password": DEV_PASSWORD}).json()["token"]
+    token = client.post("/login", json={"email": "bishal@tea.com", "password": DEV_PASSWORD}).json()["token"]
     listed = client.get("/me/bookings", headers=auth_header(token))
     assert listed.status_code == 403
     assert "book_maya_past" not in listed.text
@@ -193,8 +193,8 @@ def test_admin_can_advance_order_status_and_customer_cannot(tmp_path, monkeypatc
     path = seed_database(tmp_path / "shop.db")
     monkeypatch.setenv("SHOP_DB", str(path))
     client = TestClient(api.app)
-    customer = client.post("/login", json={"email": "nima@himali.test", "password": DEV_PASSWORD}).json()["token"]
-    admin = client.post("/login", json={"email": "admin@himali.test", "password": DEV_PASSWORD}).json()["token"]
+    customer = client.post("/login", json={"email": "bishal@tea.com", "password": DEV_PASSWORD}).json()["token"]
+    admin = client.post("/login", json={"email": "admin@tea.com", "password": DEV_PASSWORD}).json()["token"]
     denied = client.post(
         "/shops/himali-tea/orders/ord_nima_last/status",
         json={"status": "confirmed"},
@@ -210,12 +210,29 @@ def test_admin_can_advance_order_status_and_customer_cannot(tmp_path, monkeypatc
     assert advanced.json()["status"] == "confirmed"
 
 
+def test_admin_cannot_chat_but_can_list_shop_orders(tmp_path, monkeypatch):
+    path = seed_database(tmp_path / "shop.db")
+    monkeypatch.setenv("SHOP_DB", str(path))
+    monkeypatch.setattr(api, "run_message", fake_reply)
+    client = TestClient(api.app)
+    admin = client.post("/login", json={"email": "admin@tea.com", "password": DEV_PASSWORD}).json()["token"]
+    chat = client.post(
+        "/shops/himali-tea/chat",
+        json={"message": "hi"},
+        headers=auth_header(admin),
+    )
+    assert chat.status_code == 403
+    rows = client.get("/admin/orders", headers=auth_header(admin))
+    assert rows.status_code == 200
+    assert any(row["id"] == "ord_nima_last" for row in rows.json()["orders"])
+
+
 def test_user_cannot_rename_another_users_conversation(tmp_path, monkeypatch):
     path = seed_database(tmp_path / "shop.db")
     monkeypatch.setenv("SHOP_DB", str(path))
     client = TestClient(api.app)
-    nima = client.post("/login", json={"email": "nima@himali.test", "password": DEV_PASSWORD}).json()["token"]
-    maya = client.post("/login", json={"email": "maya@lotus.test", "password": DEV_PASSWORD}).json()["token"]
+    nima = client.post("/login", json={"email": "bishal@tea.com", "password": DEV_PASSWORD}).json()["token"]
+    maya = client.post("/login", json={"email": "bishal@studio.com", "password": DEV_PASSWORD}).json()["token"]
     made = client.post("/conversations", json={"title": "Nima chat"}, headers=auth_header(nima))
     assert made.status_code == 200
     chat_id = made.json()["id"]
@@ -242,7 +259,7 @@ def test_chat_stream_saves_thread_and_reloads_after_restart(tmp_path, monkeypatc
 
     monkeypatch.setattr(api, "stream_message", spy)
     client = TestClient(api.app)
-    token = client.post("/login", json={"email": "nima@himali.test", "password": DEV_PASSWORD}).json()["token"]
+    token = client.post("/login", json={"email": "bishal@tea.com", "password": DEV_PASSWORD}).json()["token"]
     made = client.post("/conversations", json={"title": "Tea thread"}, headers=auth_header(token))
     chat_id = made.json()["id"]
 

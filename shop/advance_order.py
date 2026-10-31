@@ -24,7 +24,7 @@ def main(argv=None):
         choices=["pending", "confirmed", "shipped", "delivered", "cancelled"],
     )
     parser.add_argument("--shop", default="tea", choices=["tea", "studio"])
-    parser.add_argument("--email", default="admin@himali.test")
+    parser.add_argument("--email", default="admin@tea.com")
     parser.add_argument("--password", default=DEV_PASSWORD)
     args = parser.parse_args(argv)
 

@@ -48,7 +48,7 @@ def test_studio_search_can_return_cancellation(tmp_path, monkeypatch):
 def test_knowledge_tool_uses_the_session_shop(tmp_path, monkeypatch):
     monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
     path = rebuild(tmp_path / "shop")
-    token = login(path, "tea", "nima@himali.test", DEV_PASSWORD)["token"]
+    token = login(path, "tea", "bishal@tea.com", DEV_PASSWORD)["token"]
     tool = next(item for item in make_shop_tools("tea", path, token) if item.name == "search_knowledge")
     result = json.loads(tool.invoke({
         "payload": json.dumps({

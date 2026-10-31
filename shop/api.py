@@ -372,6 +372,8 @@ def _prepare_chat(slug, body, db_path, authorization):
     token, session = require_session(db_path, authorization)
     if session["orgId"] != ENTRIES[entry]:
         raise HTTPException(status_code=403, detail="This login is for another shop.")
+    if session.get("role") == "admin":
+        raise HTTPException(status_code=403, detail="Admins see orders and bookings only. Chat is for customers.")
     if body.conversationId and not conversation_for(db_path, session, body.conversationId):
         raise HTTPException(status_code=404, detail="That chat is not yours.")
     if too_many(db_path, session["userId"]):
@@ -614,6 +616,8 @@ def my_orders_route(
     authorization: str | None = Header(default=None),
 ):
     _token, session = require_session(db_path, authorization)
+    if session.get("role") == "admin":
+        raise HTTPException(status_code=403, detail="Use the admin orders table.")
     rows = _mine(
         db_path,
         session,
@@ -640,12 +644,55 @@ def my_orders_route(
     }
 
 
+@app.get("/admin/orders")
+def admin_orders_route(
+    db_path: str = Depends(get_db),
+    authorization: str | None = Header(default=None),
+):
+    _token, session = require_session(db_path, authorization)
+    if session["orgId"] != ENTRIES["tea"]:
+        raise HTTPException(status_code=403, detail="This login is for another shop.")
+    if session.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only.")
+    conn = connect(db_path)
+    try:
+        rows = conn.execute(
+            """
+            SELECT o.id, o.status, o.items_json, o.total, o.created_at, o.customer_id,
+                   c.name AS customer_name
+            FROM orders o
+            LEFT JOIN customers c ON c.id = o.customer_id
+            WHERE o.org_id = ?
+            ORDER BY o.created_at DESC
+            """,
+            (session["orgId"],),
+        ).fetchall()
+    finally:
+        conn.close()
+    return {
+        "orders": [
+            {
+                "id": row["id"],
+                "status": row["status"],
+                "total": row["total"],
+                "createdAt": row["created_at"],
+                "customerId": row["customer_id"],
+                "customerName": row["customer_name"] or row["customer_id"],
+                "items": json.loads(row["items_json"]),
+            }
+            for row in rows
+        ]
+    }
+
+
 @app.get("/me/bookings")
 def my_bookings_route(
     db_path: str = Depends(get_db),
     authorization: str | None = Header(default=None),
 ):
     _token, session = require_session(db_path, authorization)
+    if session.get("role") == "admin":
+        raise HTTPException(status_code=403, detail="Use the admin bookings table.")
     rows = _mine(
         db_path,
         session,
@@ -668,6 +715,51 @@ def my_bookings_route(
                 "end": row["end"],
                 "price": row["price"],
                 "service": row["service"],
+            }
+            for row in rows
+        ]
+    }
+
+
+@app.get("/admin/bookings")
+def admin_bookings_route(
+    db_path: str = Depends(get_db),
+    authorization: str | None = Header(default=None),
+):
+    _token, session = require_session(db_path, authorization)
+    if session["orgId"] != ENTRIES["studio"]:
+        raise HTTPException(status_code=403, detail="This login is for another shop.")
+    if session.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only.")
+    conn = connect(db_path)
+    try:
+        rows = conn.execute(
+            """
+            SELECT b.id, b.status, b.start, b."end", b.price, b.customer_id,
+                   s.name AS service, c.name AS customer_name, p.name AS practitioner
+            FROM bookings b
+            LEFT JOIN services s ON s.id = b.service_id
+            LEFT JOIN customers c ON c.id = b.customer_id
+            LEFT JOIN practitioners p ON p.id = b.practitioner_id
+            WHERE b.org_id = ?
+            ORDER BY b.start DESC
+            """,
+            (session["orgId"],),
+        ).fetchall()
+    finally:
+        conn.close()
+    return {
+        "bookings": [
+            {
+                "id": row["id"],
+                "status": row["status"],
+                "start": row["start"],
+                "end": row["end"],
+                "price": row["price"],
+                "service": row["service"],
+                "practitioner": row["practitioner"],
+                "customerId": row["customer_id"],
+                "customerName": row["customer_name"] or row["customer_id"],
             }
             for row in rows
         ]

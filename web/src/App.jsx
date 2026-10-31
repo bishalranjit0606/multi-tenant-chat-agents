@@ -35,6 +35,14 @@ function tokenKey(shop) {
   return `shop-token:${shop.key}`;
 }
 
+function roleKey(shop) {
+  return `shop-role:${shop.key}`;
+}
+
+function defaultEmail(shop) {
+  return shop.key === "tea" ? "bishal@tea.com" : "bishal@studio.com";
+}
+
 function asksForYes(text) {
   return /\byes\b/i.test(text || "");
 }
@@ -152,11 +160,13 @@ function Gate({ onOpen }) {
 
 function ShopScreen({ shop, onHome }) {
   const [token, setToken] = useState(() => sessionStorage.getItem(tokenKey(shop)));
-  const [email, setEmail] = useState("bishal@gmail.com");
-  const [password, setPassword] = useState("bishal@123");
+  const [role, setRole] = useState(() => sessionStorage.getItem(roleKey(shop)) || "");
+  const [email, setEmail] = useState(() => defaultEmail(shop));
+  const [password, setPassword] = useState("devpass");
   const [chats, setChats] = useState([]);
   const [activeId, setActiveId] = useState("");
   const [mine, setMine] = useState([]);
+  const [adminRows, setAdminRows] = useState([]);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -166,11 +176,22 @@ function ShopScreen({ shop, onHome }) {
   const active = chats.find((chat) => chat.id === activeId) || null;
   const lastReply = [...(active?.messages || [])].reverse().find((row) => row.role === "assistant");
   const needsYes = asksForYes(lastReply?.text);
+  const isAdmin = role === "admin";
 
-  async function load(currentToken) {
+  async function load(currentToken, currentRole = role) {
     setLoading(true);
     setError("");
     try {
+      if (currentRole === "admin") {
+        const data = shop.key === "tea"
+          ? await api.adminOrders(currentToken)
+          : await api.adminBookings(currentToken);
+        setAdminRows(shop.key === "tea" ? data.orders || [] : data.bookings || []);
+        setChats([]);
+        setMine([]);
+        setActiveId("");
+        return;
+      }
       const [chatData, sideData] = await Promise.all([
         api.conversations(currentToken),
         shop.key === "tea" ? api.orders(currentToken) : api.bookings(currentToken),
@@ -179,6 +200,7 @@ function ShopScreen({ shop, onHome }) {
       setChats(rows);
       setActiveId((current) => current || rows[0]?.id || "");
       setMine(shop.key === "tea" ? sideData.orders || [] : sideData.bookings || []);
+      setAdminRows([]);
     } catch (err) {
       setError(err.message || "Could not load this shop.");
     } finally {
@@ -187,8 +209,13 @@ function ShopScreen({ shop, onHome }) {
   }
 
   useEffect(() => {
-    if (token) load(token);
-  }, [token, shop.key]);
+    setEmail(defaultEmail(shop));
+    setPassword("devpass");
+  }, [shop.key]);
+
+  useEffect(() => {
+    if (token) load(token, role);
+  }, [token, shop.key, role]);
 
   async function onLogin(event) {
     event.preventDefault();
@@ -201,7 +228,10 @@ function ShopScreen({ shop, onHome }) {
         setError("This login is for the other shop.");
         return;
       }
+      const nextRole = logged.role || "customer";
       sessionStorage.setItem(tokenKey(shop), logged.token);
+      sessionStorage.setItem(roleKey(shop), nextRole);
+      setRole(nextRole);
       setToken(logged.token);
     } catch (err) {
       setError(err.message || "Login failed.");
@@ -213,9 +243,12 @@ function ShopScreen({ shop, onHome }) {
   async function onLogout() {
     const current = token;
     sessionStorage.removeItem(tokenKey(shop));
+    sessionStorage.removeItem(roleKey(shop));
     setToken("");
+    setRole("");
     setChats([]);
     setMine([]);
+    setAdminRows([]);
     setActiveId("");
     if (current) await api.logout(current).catch(() => {});
   }
@@ -441,6 +474,83 @@ function ShopScreen({ shop, onHome }) {
     );
   }
 
+  if (isAdmin) {
+    return (
+      <main className={`shop shop-${shop.key}`} data-shop={shop.key}>
+        <header className="top">
+          <button type="button" className="text-button" onClick={onHome}><Icon name="arrow" />Both shops</button>
+          <h1>{shop.name}</h1>
+          <p>Admin desk. No chat. Shop activity only.</p>
+          <button type="button" className="text-button" onClick={onLogout}><Icon name="logout" />Log out</button>
+        </header>
+        <div className="band" />
+        {error ? (
+          <p className="error">
+            {error} <button type="button" onClick={() => load(token, role)}>Try again</button>
+          </p>
+        ) : null}
+        {loading ? <p className="status">Loading...</p> : null}
+        <section className="admin-desk">
+          <h2>{shop.key === "tea" ? "All orders" : "All bookings"}</h2>
+          {adminRows.length === 0 && !loading ? <p className="empty">No rows yet.</p> : null}
+          {shop.key === "tea" ? (
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Customer</th>
+                  <th>Order</th>
+                  <th>Status</th>
+                  <th>Items</th>
+                  <th>Total</th>
+                  <th>Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {adminRows.map((order) => (
+                  <tr key={order.id}>
+                    <td>{order.customerName}</td>
+                    <td>{order.id}</td>
+                    <td>{order.status}</td>
+                    <td>{(order.items || []).map((item) => `${item.qty}× ${item.name || item.sku}`).join(", ")}</td>
+                    <td>NPR {order.total}</td>
+                    <td>{when(order.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Customer</th>
+                  <th>Service</th>
+                  <th>Practitioner</th>
+                  <th>Status</th>
+                  <th>Start</th>
+                  <th>End</th>
+                  <th>Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                {adminRows.map((booking) => (
+                  <tr key={booking.id}>
+                    <td>{booking.customerName}</td>
+                    <td>{booking.service || booking.id}</td>
+                    <td>{booking.practitioner || "—"}</td>
+                    <td>{booking.status}</td>
+                    <td>{when(booking.start)}</td>
+                    <td>{when(booking.end)}</td>
+                    <td>NPR {booking.price}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className={`shop shop-${shop.key}`} data-shop={shop.key}>
       <header className="top">
@@ -452,7 +562,7 @@ function ShopScreen({ shop, onHome }) {
       <div className="band" />
       {error ? (
         <p className="error">
-          {error} <button type="button" onClick={() => load(token)}>Try again</button>
+          {error} <button type="button" onClick={() => load(token, role)}>Try again</button>
         </p>
       ) : null}
       {loading ? <p className="status">Loading...</p> : null}

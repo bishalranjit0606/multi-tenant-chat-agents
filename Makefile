@@ -22,4 +22,4 @@ web:
 
 # Example: make advance ORDER=ord_nima_last STATUS=confirmed
 advance:
-	$(PYTHON) -m shop.advance_order --order $(ORDER) --status $(STATUS) --shop tea --email admin@himali.test
+	$(PYTHON) -m shop.advance_order --order $(ORDER) --status $(STATUS) --shop tea --email admin@tea.com

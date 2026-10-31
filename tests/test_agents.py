@@ -68,7 +68,7 @@ def test_langgraph_gets_each_shops_tools(monkeypatch):
 
 def test_tea_token_list_bookings_gets_no_studio_rows(tmp_path):
     path = seed_database(tmp_path / "shop.db")
-    token = login(path, "tea", "nima@himali.test", DEV_PASSWORD)["token"]
+    token = login(path, "tea", "bishal@tea.com", DEV_PASSWORD)["token"]
     result = call_session_tool(path, token, "list_my_bookings", {
         "orgId": "org_b",
         "org_id": "org_b",
@@ -81,7 +81,7 @@ def test_tea_token_list_bookings_gets_no_studio_rows(tmp_path):
 
 def test_tool_org_id_does_not_switch_the_session(tmp_path):
     path = seed_database(tmp_path / "shop.db")
-    token = login(path, "tea", "nima@himali.test", DEV_PASSWORD)["token"]
+    token = login(path, "tea", "bishal@tea.com", DEV_PASSWORD)["token"]
     result = call_session_tool(path, token, "search_products", {
         "orgId": "org_b",
         "org_id": "org_b",

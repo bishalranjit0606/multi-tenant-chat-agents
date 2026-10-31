@@ -28,6 +28,7 @@ export default defineConfig({
       "/logout": "http://127.0.0.1:8000",
       "/conversations": "http://127.0.0.1:8000",
       "/me": "http://127.0.0.1:8000",
+      "/admin": "http://127.0.0.1:8000",
     },
   },
 });

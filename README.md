@@ -60,11 +60,12 @@ The page reads Server-Sent Events (`token`, `tool`, `citation`, `done`) so the r
 
 Dev password: `devpass`
 
-- nima@himali.test, customer, tea
-- admin@himali.test, admin, tea
-- maya@lotus.test, customer, studio
-- admin@lotus.test, admin, studio
+- bishal@tea.com / `devpass` (customer, tea chat)
+- admin@tea.com / `devpass` (admin, tea orders table only)
+- bishal@studio.com / `devpass` (customer, studio chat)
+- admin@studio.com / `devpass` (admin, studio bookings table only)
 
+Admins cannot chat. They only see a table of that shop’s orders or bookings (customer, status, time).
 Signup on the tea URL saves org_a. Signup on the studio URL saves org_b. Signup creates a customer, not an admin. The database stores a bcrypt hash, not the plain password.
 
 Advance a tea order status (admin only):

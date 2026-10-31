@@ -28,12 +28,10 @@ TABLES = [
 ]
 ENTRIES = {"tea": "org_a", "studio": "org_b"}
 SEED_USERS = [
-    {"email": "nima@himali.test", "org_id": "org_a", "customer_id": "a_nima", "role": "customer"},
-    {"email": "admin@himali.test", "org_id": "org_a", "customer_id": None, "role": "admin"},
-    {"email": "maya@lotus.test", "org_id": "org_b", "customer_id": "b_maya", "role": "customer"},
-    {"email": "admin@lotus.test", "org_id": "org_b", "customer_id": None, "role": "admin"},
-    {"email": "bishal@gmail.com", "org_id": "org_a", "customer_id": "a_nima", "role": "customer", "password": "bishal@123"},
-    {"email": "bishal@gmail.com", "org_id": "org_b", "customer_id": "b_maya", "role": "customer", "password": "bishal@123"},
+    {"email": "bishal@tea.com", "org_id": "org_a", "customer_id": "a_nima", "role": "customer"},
+    {"email": "admin@tea.com", "org_id": "org_a", "customer_id": None, "role": "admin"},
+    {"email": "bishal@studio.com", "org_id": "org_b", "customer_id": "b_maya", "role": "customer"},
+    {"email": "admin@studio.com", "org_id": "org_b", "customer_id": None, "role": "admin"},
 ]
 
 

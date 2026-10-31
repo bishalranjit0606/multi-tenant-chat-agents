@@ -59,7 +59,7 @@ def test_signup_shop_comes_from_the_entry_and_role_stays_customer(tmp_path):
 
 def test_login_returns_a_token_and_logout_kills_it(tmp_path):
     path = fresh_db(tmp_path)
-    signed = login(path, "tea", "nima@himali.test", DEV_PASSWORD)
+    signed = login(path, "tea", "bishal@tea.com", DEV_PASSWORD)
     assert signed["ok"] is True
     assert isinstance(signed["token"], str)
     assert signed["token"]
@@ -73,7 +73,7 @@ def test_login_returns_a_token_and_logout_kills_it(tmp_path):
 
 def test_tea_user_cannot_list_studio_bookings(tmp_path):
     path = fresh_db(tmp_path)
-    token = login(path, "tea", "nima@himali.test", DEV_PASSWORD)["token"]
+    token = login(path, "tea", "bishal@tea.com", DEV_PASSWORD)["token"]
     listed = read_shop(path, token, "list_my_bookings", {"orgId": "org_b", "customerId": "b_maya"})
     rows = listed.get("upcoming", []) + listed.get("past", [])
     ids = [row["id"] for row in rows]
@@ -83,7 +83,7 @@ def test_tea_user_cannot_list_studio_bookings(tmp_path):
 
 def test_nima_cannot_read_sitas_order(tmp_path):
     path = fresh_db(tmp_path)
-    token = login(path, "tea", "nima@himali.test", DEV_PASSWORD)["token"]
+    token = login(path, "tea", "bishal@tea.com", DEV_PASSWORD)["token"]
     hidden = read_shop(path, token, "get_order_status", {
         "orgId": "org_a",
         "customerId": "a_sita",
@@ -95,7 +95,7 @@ def test_nima_cannot_read_sitas_order(tmp_path):
 
 def test_fake_org_id_does_not_switch_the_session_shop(tmp_path):
     path = fresh_db(tmp_path)
-    token = login(path, "tea", "nima@himali.test", DEV_PASSWORD)["token"]
+    token = login(path, "tea", "bishal@tea.com", DEV_PASSWORD)["token"]
     services = read_shop(path, token, "list_services", {"orgId": "org_b", "customerId": "b_maya"})
     assert services["ok"] is True
     assert services["services"] == []

@@ -119,4 +119,6 @@ export const api = {
   chatStream,
   orders: (token) => request("/me/orders", { token }),
   bookings: (token) => request("/me/bookings", { token }),
+  adminOrders: (token) => request("/admin/orders", { token }),
+  adminBookings: (token) => request("/admin/bookings", { token }),
 };
