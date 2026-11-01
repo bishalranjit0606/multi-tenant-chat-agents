@@ -81,28 +81,154 @@ def kathmandu_to_utc(year, month, day, hour, minute):
     return datetime(year, month, day, hour, minute, tzinfo=timezone.utc) - OFFSET
 
 
+def local_text(value):
+    parts = kathmandu_parts(value)
+    return f"{parts['dateKey']} {parts['hour']:02d}:{parts['minute']:02d}"
+
+
+def now_of(data):
+    return as_utc(data["now"]) if data.get("now") is not None else datetime.now(timezone.utc)
+
+
+MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+MONTH_WORD = (
+    r"(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?"
+    r"|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
+)
+DAY_WORDS = {
+    "sun": "Sun", "sunday": "Sun",
+    "mon": "Mon", "monday": "Mon",
+    "tue": "Tue", "tues": "Tue", "tuesday": "Tue",
+    "wed": "Wed", "weds": "Wed", "wednesday": "Wed",
+    "thu": "Thu", "thur": "Thu", "thurs": "Thu", "thursday": "Thu",
+    "fri": "Fri", "friday": "Fri",
+    "sat": "Sat", "saturday": "Sat",
+}
+# Start hour (inclusive) and end hour (exclusive) for slot starts.
+DAY_PARTS = {"morning": (9, 12), "afternoon": (14, 17), "evening": (16, 18)}
+MAX_SLOTS = 40
+CLOCK = re.compile(r"\b(\d{1,2})(?:[:.](\d{2})|\s+(\d{2}))?\s*(am|pm|noon|o'?clock)?\b")
+UNPARSED = "Say a day and time, such as nov 5 2 pm, next wednesday, or tomorrow morning."
+
+
+def _shift_date(date_key, days):
+    bits = [int(part) for part in date_key.split("-")]
+    moved = kathmandu_to_utc(bits[0], bits[1], bits[2], 12, 0) + timedelta(days=days)
+    return kathmandu_parts(moved)["dateKey"]
+
+
+def _date_key(year, month, day):
+    try:
+        datetime(year, month, day)
+    except ValueError:
+        return None
+    return f"{year:04d}-{month:02d}-{day:02d}"
+
+
+def _calendar_date(year, month, day, today):
+    if year:
+        return _date_key(int(year), month, day)
+    key = _date_key(today["year"], month, day)
+    if key and key < today["dateKey"]:
+        key = _date_key(today["year"] + 1, month, day)
+    return key
+
+
+def _phrase_date(text, today):
+    found = re.search(r"\b(\d{4})-(\d{1,2})-(\d{1,2})\b", text)
+    if found:
+        key = _date_key(int(found.group(1)), int(found.group(2)), int(found.group(3)))
+        return key, text.replace(found.group(0), " "), key is None
+    found = re.search(rf"\b(\d{{1,2}})(?:st|nd|rd|th)?\s+(?:of\s+)?{MONTH_WORD}\b(?:\s+(\d{{4}}))?", text)
+    if found:
+        month = MONTHS.index(found.group(2)[:3]) + 1
+        key = _calendar_date(found.group(3), month, int(found.group(1)), today)
+        return key, text.replace(found.group(0), " "), key is None
+    found = re.search(rf"\b{MONTH_WORD}\s+(\d{{1,2}})(?:st|nd|rd|th)?\b(?:\s+(\d{{4}}))?", text)
+    if found:
+        month = MONTHS.index(found.group(1)[:3]) + 1
+        key = _calendar_date(found.group(3), month, int(found.group(2)), today)
+        return key, text.replace(found.group(0), " "), key is None
+    found = re.search(r"\bday after (?:tomorrow|tmrw|tmr)\b", text)
+    if found:
+        return _shift_date(today["dateKey"], 2), text.replace(found.group(0), " "), False
+    found = re.search(r"\b(?:tomorrow|tmrw|tmr)\b", text)
+    if found:
+        return _shift_date(today["dateKey"], 1), text.replace(found.group(0), " "), False
+    found = re.search(r"\b(?:today|tonight)\b", text)
+    if found:
+        return today["dateKey"], text.replace(found.group(0), " "), False
+    for word, weekday in DAY_WORDS.items():
+        found = re.search(rf"\b(?:next\s+|this\s+|on\s+)?{word}\b", text)
+        if found:
+            delta = (WEEKDAYS.index(weekday) - WEEKDAYS.index(today["weekday"]) + 7) % 7
+            if delta == 0:
+                delta = 7
+            return _shift_date(today["dateKey"], delta), text.replace(found.group(0), " "), False
+    return None, text, False
+
+
+def _phrase_clock(text):
+    for found in CLOCK.finditer(text):
+        hour = int(found.group(1))
+        minute = int(found.group(2) or found.group(3) or 0)
+        suffix = found.group(4) or ""
+        if suffix in ("pm", "noon") and hour < 12:
+            hour += 12
+        elif suffix == "am" and hour == 12:
+            hour = 0
+        elif not suffix and 1 <= hour <= 7:
+            hour += 12
+        if hour > 23 or minute > 59:
+            continue
+        return hour, minute
+    if re.search(r"\b(?:noon|midday)\b", text):
+        return 12, 0
+    return None
+
+
 def resolve_phrase(phrase, now=None):
     if now is None:
         now = datetime.now(timezone.utc)
-    text = str(phrase or "").lower()
-    if "tuesday" not in text or "afternoon" not in text:
-        return fail("unparsed_phrase", "Say a clearer time, such as next Tuesday afternoon.")
-    start = kathmandu_parts(now)
-    today = WEEKDAYS.index(start["weekday"])
-    delta = (2 - today + 7) % 7
-    if delta == 0:
-        delta = 7
-    today_afternoon = kathmandu_to_utc(start["year"], start["month"], start["day"], 14, 0)
-    target = today_afternoon + timedelta(days=delta)
-    parts = kathmandu_parts(target)
-    return {
+    today = kathmandu_parts(now)
+    text = " " + re.sub(r"[,]", " ", str(phrase or "").lower()) + " "
+    date_key, text, bad_date = _phrase_date(text, today)
+    if bad_date:
+        return fail("bad_date", "That date does not exist.")
+    part = next((name for name in DAY_PARTS if re.search(rf"\b{name}\b", text)), None)
+    if part:
+        text = re.sub(rf"\b{part}\b", " ", text)
+    clock = _phrase_clock(text)
+    if date_key is None and clock is None and part is None:
+        return fail("unparsed_phrase", UNPARSED)
+    if date_key is None:
+        date_key = today["dateKey"]
+        if clock:
+            bits = [int(item) for item in date_key.split("-")]
+            if kathmandu_to_utc(bits[0], bits[1], bits[2], clock[0], clock[1]) <= now:
+                date_key = _shift_date(date_key, 1)
+    exact = clock is not None
+    if clock is None and part:
+        clock = (DAY_PARTS[part][0], 0)
+    bits = [int(item) for item in date_key.split("-")]
+    noon = kathmandu_parts(kathmandu_to_utc(bits[0], bits[1], bits[2], 12, 0))
+    out = {
         "ok": True,
         "timeZone": TIME_ZONE,
-        "start": to_iso(target),
-        "local": parts["dateKey"] + " 14:00",
-        "weekday": parts["weekday"],
-        "hour": parts["hour"],
+        "date": date_key,
+        "weekday": noon["weekday"],
+        "part": part,
+        "exact": exact,
+        "start": None,
+        "local": date_key,
+        "hour": None,
     }
+    if clock:
+        start = kathmandu_to_utc(bits[0], bits[1], bits[2], clock[0], clock[1])
+        out["start"] = to_iso(start)
+        out["local"] = f"{date_key} {clock[0]:02d}:{clock[1]:02d}"
+        out["hour"] = clock[0]
+    return out
 
 
 def next_id(store, prefix):
@@ -732,19 +858,22 @@ def find_available_slots(store, data):
     to_key = data.get("to")
     min_hour = None
     max_hour = None
-    now_value = as_utc(data["now"]) if data.get("now") is not None else datetime.now(timezone.utc)
+    wanted = None
+    now_value = now_of(data)
     if data.get("phrase"):
         when = resolve_phrase(data["phrase"], now_value)
         if not when["ok"]:
             return when
-        from_key = when["local"][:10]
+        from_key = when["date"]
         to_key = from_key
-        if "afternoon" in str(data["phrase"]).lower():
-            min_hour = 14
-            max_hour = 17
+        if when["exact"]:
+            wanted = when["local"]
+        elif when["part"]:
+            min_hour, max_hour = DAY_PARTS[when["part"]]
     today = kathmandu_parts(now_value)["dateKey"]
     if not from_key:
         from_key = today
+        to_key = to_key or _shift_date(today, 6)
     if not to_key:
         to_key = from_key
     slots = []
@@ -765,6 +894,9 @@ def find_available_slots(store, data):
         while minute + service["durationMin"] <= close_min:
             start = kathmandu_to_utc(bits[0], bits[1], bits[2], minute // 60, minute % 60)
             end = start + timedelta(minutes=service["durationMin"])
+            if start <= now_value:
+                minute += 30
+                continue
             for person in people:
                 hit = conflicts(store, {
                     "orgId": data.get("orgId"),
@@ -782,6 +914,7 @@ def find_available_slots(store, data):
                     "start": to_iso(start),
                     "end": to_iso(end),
                     "local": f"{local['dateKey']} {local['hour']:02d}:{local['minute']:02d}",
+                    "localEnd": local_text(end),
                     "serviceId": service["id"],
                     "serviceName": service["name"],
                     "durationMin": service["durationMin"],
@@ -791,7 +924,18 @@ def find_available_slots(store, data):
                 })
                 break
             minute += 30
-    return {"ok": True, "timeZone": TIME_ZONE, "slots": slots}
+    out = {"ok": True, "timeZone": TIME_ZONE, "slots": slots[:MAX_SLOTS]}
+    if from_key != to_key:
+        days = {}
+        for slot in slots:
+            days[slot["local"][:10]] = days.get(slot["local"][:10], 0) + 1
+        out["freeDays"] = [{"date": key, "freeSlots": count} for key, count in days.items()]
+    if len(slots) > MAX_SLOTS:
+        out["more"] = True
+    if wanted:
+        out["requested"] = wanted
+        out["requestedFree"] = any(slot["local"] == wanted for slot in slots)
+    return out
 
 
 def booking_summary(service, person, start, price):
@@ -837,10 +981,47 @@ def nearest_slots(store, data, start):
 def _parse_start(start_value):
     if not start_value:
         return None
-    try:
+    if isinstance(start_value, datetime):
         return as_utc(start_value)
+    text = str(start_value).strip()
+    try:
+        parsed = datetime.fromisoformat(text[:-1] + "+00:00" if text.endswith("Z") else text)
     except ValueError:
         return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=KTM)
+    return parsed.astimezone(timezone.utc)
+
+
+def _start_from(data):
+    start_value = data.get("start")
+    if start_value and _parse_start(start_value) is None:
+        data = dict(data, phrase=start_value)
+        start_value = None
+    if not start_value and data.get("phrase"):
+        when = resolve_phrase(data["phrase"], now_of(data))
+        if not when["ok"]:
+            return when
+        if not when["start"]:
+            return fail("bad_time", "Give a time as well as a day, such as nov 5 2 pm.")
+        start_value = when["start"]
+    start = _parse_start(start_value)
+    if start is None:
+        return fail("bad_time", "Give a start time.")
+    return {"ok": True, "start": start}
+
+
+def own_booking(store, data):
+    if not data.get("bookingId"):
+        return fail("booking_id_required", "Say which booking. Call list_my_bookings to get the id.")
+    booking = next((row for row in store["bookings"] if row["id"] == data.get("bookingId")), None)
+    if not booking or booking["orgId"] != data.get("orgId") or booking["customerId"] != data.get("customerId"):
+        return fail("not_your_booking", "That booking is not yours.")
+    if booking["status"] != "booked":
+        return fail("not_active", f"This booking is already {booking['status']}.", {"status": booking["status"]})
+    if epoch_ms(booking["end"]) < epoch_ms(now_of(data)):
+        return fail("past_booking", "This booking is in the past. It cannot be changed or cancelled.")
+    return {"ok": True, "booking": booking}
 
 
 def create_booking(store, data):
@@ -857,15 +1038,10 @@ def create_booking(store, data):
     )
     if not person:
         return fail("unknown_practitioner", "That practitioner is not at this studio.")
-    start_value = data.get("start")
-    if not start_value and data.get("phrase"):
-        when = resolve_phrase(data["phrase"], as_utc(data["now"]) if data.get("now") is not None else datetime.now(timezone.utc))
-        if not when["ok"]:
-            return when
-        start_value = when["start"]
-    start = _parse_start(start_value)
-    if start is None:
-        return fail("bad_time", "Give a start time.")
+    picked = _start_from(data)
+    if not picked["ok"]:
+        return picked
+    start = picked["start"]
     end = start + timedelta(minutes=service["durationMin"])
     fit = slot_fits(store, data.get("orgId"), start, end)
     if not fit["ok"]:
@@ -918,27 +1094,36 @@ def reschedule_booking(store, data):
     gate = require_customer(store, data.get("orgId"), data.get("customerId"))
     if not gate["ok"]:
         return gate
-    booking = next((row for row in store["bookings"] if row["id"] == data.get("bookingId")), None)
-    if (
-        not booking
-        or booking["orgId"] != data.get("orgId")
-        or booking["customerId"] != data.get("customerId")
-        or booking["status"] != "booked"
-    ):
-        return fail("not_your_booking", "That booking is not yours.")
-    service = service_row(store, data.get("orgId"), booking["serviceId"])
-    practitioner_id = data.get("practitionerId") or booking["practitionerId"]
+    owned = own_booking(store, data)
+    if not owned["ok"]:
+        return owned
+    booking = owned["booking"]
+    service_key = data.get("serviceId") or data.get("serviceName") or data.get("service") or booking["serviceId"]
+    service = service_row(store, data.get("orgId"), service_key)
+    if not service:
+        return fail("unknown_service", "That service is not at this studio.")
+    practitioner_id = (
+        data.get("practitionerId")
+        or data.get("practitionerName")
+        or data.get("practitioner")
+        or booking["practitionerId"]
+    )
     person = practitioner_row(store, data.get("orgId"), practitioner_id)
-    if not service or not person:
+    if not person:
         return fail("unknown_practitioner", "That practitioner is not at this studio.")
-    start = _parse_start(data.get("start"))
-    if start is None:
-        return fail("bad_time", "Give a start time.")
+    if data.get("start") or data.get("phrase"):
+        picked = _start_from(data)
+        if not picked["ok"]:
+            return picked
+        start = picked["start"]
+    else:
+        start = as_utc(booking["start"])
     end = start + timedelta(minutes=service["durationMin"])
     fit = slot_fits(store, data.get("orgId"), start, end)
     if not fit["ok"]:
         return fit
     summary = booking_summary(service, person, start, service["price"])
+    summary["bookingId"] = booking["id"]
     probe = {
         "orgId": data.get("orgId"),
         "customerId": data.get("customerId"),
@@ -977,6 +1162,7 @@ def reschedule_booking(store, data):
         return again
     booking["start"] = to_iso(start)
     booking["end"] = to_iso(end)
+    booking["serviceId"] = service["id"]
     booking["practitionerId"] = person["id"]
     booking["price"] = service["price"]
     return {"ok": True, "booking": booking, "summary": summary}
@@ -986,21 +1172,18 @@ def cancel_booking(store, data):
     gate = require_customer(store, data.get("orgId"), data.get("customerId"))
     if not gate["ok"]:
         return gate
-    booking = next((row for row in store["bookings"] if row["id"] == data.get("bookingId")), None)
-    if (
-        not booking
-        or booking["orgId"] != data.get("orgId")
-        or booking["customerId"] != data.get("customerId")
-        or booking["status"] != "booked"
-    ):
-        return fail("not_your_booking", "That booking is not yours.")
+    owned = own_booking(store, data)
+    if not owned["ok"]:
+        return owned
+    booking = owned["booking"]
     service = service_row(store, data.get("orgId"), booking["serviceId"])
     person = practitioner_row(store, data.get("orgId"), booking["practitionerId"])
     start = as_utc(booking["start"])
     summary = booking_summary(service, person, start, booking["price"])
+    summary["bookingId"] = booking["id"]
     if data.get("confirm") is not True:
         return fail("confirm_required", "Wait for a yes before cancelling this booking.", {"summary": summary})
-    now = as_utc(data["now"]) if data.get("now") is not None else datetime.now(timezone.utc)
+    now = now_of(data)
     hours_until = (epoch_ms(start) - epoch_ms(now)) / 3600000
     policy = store["bookingPolicy"]
     late = hours_until < policy["cancelFreeHours"]
@@ -1038,13 +1221,17 @@ def list_my_bookings(store, data):
 
     def map_row(row):
         service = service_row(store, row["orgId"], row["serviceId"])
+        person = practitioner_row(store, row["orgId"], row["practitionerId"])
         return {
             "id": row["id"],
             "serviceId": row["serviceId"],
             "service": service["name"] if service else row["serviceId"],
             "practitionerId": row["practitionerId"],
+            "practitioner": person["name"] if person else row["practitionerId"],
             "start": row["start"],
             "end": row["end"],
+            "startLocal": local_text(row["start"]),
+            "endLocal": local_text(row["end"]),
             "price": row["price"],
             "status": row["status"],
             "when": "upcoming" if epoch_ms(row["end"]) >= now else "past",
@@ -1052,6 +1239,7 @@ def list_my_bookings(store, data):
 
     return {
         "ok": True,
+        "timeZone": TIME_ZONE,
         "upcoming": [map_row(row) for row in rows if row["status"] == "booked" and epoch_ms(row["end"]) >= now],
         "past": [map_row(row) for row in rows if row["status"] != "booked" or epoch_ms(row["end"]) < now],
     }

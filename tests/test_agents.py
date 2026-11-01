@@ -94,6 +94,113 @@ def test_tool_org_id_does_not_switch_the_session(tmp_path):
     assert "svc_swedish" not in raw
 
 
+def _studio_tools(path, token, pending, confirm_ok):
+    return {
+        tool.name: tool
+        for tool in make_shop_tools("studio", path, token, pending=pending, confirm_ok=confirm_ok)
+    }
+
+
+def test_yes_books_the_slot_that_was_shown_not_14_00(tmp_path):
+    import shop.agents as agents
+
+    path = seed_database(tmp_path / "shop.db")
+    token = login(path, "studio", "bishal@studio.com", DEV_PASSWORD)["token"]
+    pending = []
+    tools = _studio_tools(path, token, pending, confirm_ok=False)
+    preview = json.loads(tools["create_booking"].invoke({
+        "service": "Swedish massage",
+        "practitioner": "Anita",
+        "phrase": "next tuesday 4:30 pm",
+        "confirm": True,
+    }))
+    assert preview["code"] == "confirm_required"
+    assert preview["summary"]["time"] == "16:30"
+    key = agents._pending_key(token, "chat_1")
+    agents._remember_pending(key, pending)
+    done = agents.confirm_pending(path, token, "yes", "chat_1")
+    assert "16:30" in done["text"]
+    assert done["tools"] == ["create_booking"]
+    listed = call_session_tool(path, token, "list_my_bookings", {})
+    assert [row["startLocal"][-5:] for row in listed["upcoming"]] == ["16:30"]
+    assert listed["upcoming"][0]["practitioner"] == "Anita"
+    assert agents.confirm_pending(path, token, "yes", "chat_1") is None
+
+
+def test_changing_the_service_reschedules_instead_of_booking_again(tmp_path):
+    import shop.agents as agents
+
+    path = seed_database(tmp_path / "shop.db")
+    token = login(path, "studio", "bishal@studio.com", DEV_PASSWORD)["token"]
+    booked = call_session_tool(path, token, "create_booking", {
+        "service": "Swedish massage",
+        "practitioner": "Anita",
+        "phrase": "next tuesday 2 pm",
+        "confirm": True,
+    })
+    booking_id = booked["booking"]["id"]
+    pending = []
+    tools = _studio_tools(path, token, pending, confirm_ok=False)
+    preview = json.loads(tools["reschedule_booking"].invoke({
+        "booking_id": booking_id,
+        "service": "Deep tissue massage",
+    }))
+    assert preview["code"] == "confirm_required"
+    agents._remember_pending(agents._pending_key(token, "chat_2"), pending)
+    done = agents.confirm_pending(path, token, "ok", "chat_2")
+    assert "Deep tissue" in done["text"]
+    listed = call_session_tool(path, token, "list_my_bookings", {})
+    assert len(listed["upcoming"]) == 1
+    assert listed["upcoming"][0]["id"] == booking_id
+    assert listed["upcoming"][0]["service"] == "Deep tissue massage"
+
+
+def test_cancel_takes_a_booking_id_and_cancels_all_after_one_yes(tmp_path):
+    import shop.agents as agents
+
+    path = seed_database(tmp_path / "shop.db")
+    token = login(path, "studio", "bishal@studio.com", DEV_PASSWORD)["token"]
+    ids = []
+    for phrase in ("next tuesday 2 pm", "next wednesday 3 pm"):
+        made = call_session_tool(path, token, "create_booking", {
+            "service": "Swedish massage",
+            "practitioner": "Anita",
+            "phrase": phrase,
+            "confirm": True,
+        })
+        ids.append(made["booking"]["id"])
+    pending = []
+    tools = _studio_tools(path, token, pending, confirm_ok=False)
+    for booking_id in ids:
+        preview = json.loads(tools["cancel_booking"].invoke({"booking_id": booking_id}))
+        assert preview["code"] == "confirm_required"
+    past = json.loads(tools["cancel_booking"].invoke({"booking_id": "book_maya_past"}))
+    assert past["code"] == "past_booking"
+    agents._remember_pending(agents._pending_key(token, "chat_3"), pending)
+    done = agents.confirm_pending(path, token, "yes cancel all", "chat_3")
+    assert done["text"].count("Cancelled booking") == 2
+    listed = call_session_tool(path, token, "list_my_bookings", {})
+    assert listed["upcoming"] == []
+
+
+def test_studio_prompt_has_todays_date(monkeypatch):
+    import shop.agents as agents
+
+    seen = {}
+
+    def fake_create(model, tools, **kwargs):
+        seen["prompt"] = kwargs.get("prompt")
+        return "graph"
+
+    monkeypatch.setattr(agents, "build_model", lambda: "fake-model")
+    import langgraph.prebuilt as prebuilt
+
+    monkeypatch.setattr(prebuilt, "create_react_agent", fake_create)
+    agents.build_agent("studio", "unused.db", "token")
+    assert "Today is " in seen["prompt"]
+    assert "Never show UTC" in seen["prompt"]
+
+
 def test_importing_the_agent_module_does_not_call_the_network(monkeypatch):
     def blocked(*_args, **_kwargs):
         raise AssertionError("network")

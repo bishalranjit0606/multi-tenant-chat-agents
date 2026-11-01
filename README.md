@@ -4,6 +4,8 @@ Himali Tea House (org_a, tea) takes tea orders. Lotus Wellness Studio (org_b, st
 
 The first prototype is `n8n-prototype.json`. The app to review is `shop/` and `web/`.
 
+![Landing page with both shops](images/landing_login.png)
+
 ## Setup
 
 Postgres is on port 5433.
@@ -61,11 +63,11 @@ The page reads Server-Sent Events (`token`, `tool`, `citation`, `done`) so the r
 Dev password: `devpass`
 
 - bishal@tea.com / `devpass` (customer, tea chat)
-- admin@tea.com / `devpass` (admin, tea orders table only)
+- admin@tea.com / `devpass` (admin, tea orders table + admin analyst)
 - bishal@studio.com / `devpass` (customer, studio chat)
-- admin@studio.com / `devpass` (admin, studio bookings table only)
+- admin@studio.com / `devpass` (admin, studio bookings table + admin analyst)
 
-Admins cannot chat. They only see a table of that shop’s orders or bookings (customer, status, time).
+Admins cannot use the customer chat (403). They see a table of that shop’s orders or bookings, and a read-only admin analyst under it (see below).
 Signup on the tea URL saves org_a. Signup on the studio URL saves org_b. Signup creates a customer, not an admin. The database stores a bcrypt hash, not the plain password.
 
 Advance a tea order status (admin only):
@@ -82,6 +84,60 @@ The shop comes from the URL. `/shops/himali-tea/chat` is tea. `/shops/lotus-stud
 A tea token on the studio chat route gets 403. The page also keeps a tea login on the tea screen.
 A shop id in the body or in a header does not change the session. The session row wins.
 The database reads orders, bookings, and chats with that session's shop and user. A tea token on `GET /me/bookings` gets 403, so no studio rows come back.
+
+## Admin agent
+
+Each shop has one read-only admin analyst. It lives under the admin table on the page.
+
+![Studio admin page with bookings table and admin analyst](images/admin_page.png)
+The route is `POST /shops/{slug}/admin/chat/stream` with an admin Bearer token. It streams the same SSE events as customer chat (`meta`, `token`, `tool`, `done`, `error`).
+
+Logins:
+
+- admin@tea.com / `devpass` on `/tea`
+- admin@studio.com / `devpass` on `/studio`
+
+Example questions:
+
+- Tea: "How many orders today?", "Top 3 teas this week?", "Which teas are low on stock?", "Conversion last 7 days?"
+- Studio: "How many bookings this week?", "Practitioner utilisation today?", "Busiest hours all time?", "How many cancellations this week?"
+
+Tools:
+
+- Tea: `order_stats`, `top_products`, `client_stats`, `conversion`
+- Studio: `booking_stats`, `top_services`, `client_stats`, `conversion`
+
+How read-only is enforced:
+
+- The SQL lives in `shop/admin_stats.py`. It only runs `SELECT`. A test checks the file has no `INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, or `COMMIT`, and that row counts do not change after every admin tool runs.
+- Admins never get the customer order or booking tools.
+- The prompt says it is read-only and refuses write requests.
+
+How org scope is enforced:
+
+- The route needs a session with role `admin` (else 403) and the session org must match the URL shop (else 403). A customer token gets 403.
+- The tools take only `period` (and `limit` for top lists). `orgId`, `org_id`, `customerId`, and `now` are dropped. The org always comes from the session row.
+- Every query has `WHERE org_id = ?` with the session org. Joins also match `org_id`.
+- The prompt refuses questions about the other shop. Even if the model is tricked, its tools cannot read the other org.
+- Admin chat is stateless. Nothing is saved to `conversations` or `messages`. It shares the 20 per minute rate limit.
+
+Time windows (`period`), all in Asia/Kathmandu:
+
+- `today`: 00:00 to 24:00 today
+- `this_week`: Sunday 00:00 to next Sunday 00:00
+- `last_7_days`: now minus 7 days to now
+- `all`: no bounds
+
+The window is turned into UTC ISO and compared to `created_at` (orders, conversations) or `start` (bookings). Every tool result has `window` (start and end in local time) and `definition`, and the agent states both.
+
+Definitions:
+
+- Revenue = sum of `total`, cancelled orders left out. Average order value = revenue / orders not cancelled.
+- Best sellers = qty summed from order items in the window. Low stock = stock of 5 or less right now.
+- Utilisation = booked minutes (not cancelled) / open minutes from opening hours, holidays closed, per practitioner. For `all`, it spans the first to the last booking.
+- Unique customers who chatted = distinct customer users with a conversation in the window. New sign-ups are "not tracked" because users have no sign-up date.
+- Tea conversion = conversations in the window whose customer placed an order in the same window / all conversations in the window.
+- Studio conversion = conversations in the window whose customer has a booking (not cancelled) starting at or after the chat / all conversations. Bookings have no created time, so this is an estimate.
 
 ## Knowledge (RAG)
 
@@ -117,6 +173,8 @@ The tea page is Himali Tea House, in a green tea colour, with the greeting "What
 The studio page is Lotus Wellness Studio, in a blue colour, with the greeting "When would you like to come in?"
 Each shop keeps its own colour, greeting, and layout cues so the two chats do not look like one generic template.
 The side list can start, rename, and delete a chat.
+
+![Customer chat with tool names, citations, and order list](images/chat_eg_ss_studio.png)
 A tool name shows when the API sends one. A citation shows the document and the section.
 Stop aborts the current request. Confirm sends Yes when the reply asks for a yes.
 

@@ -337,6 +337,42 @@ def test_next_tuesday_afternoon_is_14_00_in_kathmandu():
     assert again["code"] == "slot_taken"
 
 
+def test_plain_phrases_resolve_in_kathmandu():
+    cases = {
+        "nov 5 2 pm": "2026-11-05 14:00",
+        "next wednesday 2 pm": "2026-11-04 14:00",
+        "4 30 noon": "2026-10-30 16:30",
+        "2026-11-05 14:00": "2026-11-05 14:00",
+        "5th november 10:30 am": "2026-11-05 10:30",
+        "next wednesday": "2026-11-04",
+    }
+    for phrase, local in cases.items():
+        resolved = resolve_phrase(phrase, NOW)
+        assert resolved["ok"] is True, phrase
+        assert resolved["local"] == local, phrase
+    assert resolve_phrase("list available slots", NOW)["code"] == "unparsed_phrase"
+    store = create_store(seed)
+    exact = find_available_slots(store, {
+        "orgId": "org_b",
+        "customerId": "b_lina",
+        "serviceId": "svc_swedish",
+        "phrase": "nov 5 2 pm",
+        "now": NOW,
+    })
+    assert exact["requested"] == "2026-11-05 14:00"
+    assert exact["requestedFree"] is True
+    assert all(slot["local"].startswith("2026-11-05") for slot in exact["slots"])
+    assert exact["slots"][0]["localEnd"] == "2026-11-05 10:00"
+    week = find_available_slots(store, {
+        "orgId": "org_b",
+        "customerId": "b_lina",
+        "serviceId": "svc_swedish",
+        "now": NOW,
+    })
+    assert len(week["freeDays"]) >= 5
+    assert all(slot["start"] > to_iso(NOW) for slot in week["slots"])
+
+
 def test_the_newest_saved_shop_wins():
     stale = create_store(seed)
     fresh = create_store(seed)

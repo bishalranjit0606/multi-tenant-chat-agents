@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
-from shop.agents import run_message, setup_langsmith, stream_message
+from shop.agents import run_message, setup_langsmith, stream_admin_message, stream_message
 from shop.auth import advance_order, login, logout, session_for, signup
 from shop.db import ENTRIES, connect
 
@@ -106,6 +106,11 @@ class ChatIn(BaseModel):
     model_config = ConfigDict(extra="allow")
     message: str
     conversationId: str | None = None
+
+
+class AdminChatIn(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    message: str
 
 
 class ConversationIn(BaseModel):
@@ -506,6 +511,49 @@ def chat_stream_route(
             conn.commit()
         finally:
             conn.close()
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@app.post("/shops/{slug}/admin/chat/stream")
+def admin_chat_stream_route(
+    slug: str,
+    body: AdminChatIn,
+    db_path: str = Depends(get_db),
+    authorization: str | None = Header(default=None),
+):
+    entry = shop_entry(slug)
+    _token, session = require_session(db_path, authorization)
+    if session.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only.")
+    if session["orgId"] != ENTRIES[entry]:
+        raise HTTPException(status_code=403, detail="This login is for another shop.")
+    if too_many(db_path, session["userId"]):
+        raise HTTPException(status_code=429, detail="Too many messages. Wait a minute.")
+    org_id = session["orgId"]
+
+    async def event_gen():
+        yield _sse({"type": "meta", "mode": "admin", "shop": entry})
+        await asyncio.sleep(0)
+        try:
+            for event in stream_admin_message(entry, db_path, org_id, body.message):
+                yield _sse(event)
+                await asyncio.sleep(0)
+        except RuntimeError as err:
+            if str(err) == MISSING_KEY:
+                yield _sse({"type": "error", "detail": MISSING_KEY})
+                return
+            raise
+        except Exception as err:
+            yield _sse({"type": "error", "detail": str(err) or "Admin chat failed."})
 
     return StreamingResponse(
         event_gen(),

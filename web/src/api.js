@@ -39,16 +39,25 @@ function parseSseBlock(block) {
   return JSON.parse(dataLines.join("\n"));
 }
 
-async function chatStream(token, slug, message, conversationId, { signal, onEvent } = {}) {
+function chatStream(token, slug, message, conversationId, options = {}) {
+  return streamPost(`/shops/${slug}/chat/stream`, token, { message, conversationId }, options);
+}
+
+function adminChatStream(token, slug, message, options = {}) {
+  return streamPost(`/shops/${slug}/admin/chat/stream`, token, { message }, options);
+}
+
+async function streamPost(path, token, payload, { signal, onEvent } = {}) {
+  const { conversationId } = payload;
   const headers = {
     "Content-Type": "application/json",
     Accept: "text/event-stream",
   };
   if (token) headers.Authorization = `Bearer ${token}`;
-  const response = await fetch(`${STREAM_BASE}/shops/${slug}/chat/stream`, {
+  const response = await fetch(`${STREAM_BASE}${path}`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ message, conversationId }),
+    body: JSON.stringify(payload),
     signal,
   });
   if (!response.ok) {
@@ -117,6 +126,7 @@ export const api = {
     signal,
   }),
   chatStream,
+  adminChatStream,
   orders: (token) => request("/me/orders", { token }),
   bookings: (token) => request("/me/bookings", { token }),
   adminOrders: (token) => request("/admin/orders", { token }),

@@ -12,6 +12,7 @@ const SHOPS = {
     greeting: "What tea shall we pack today?",
     listLabel: "My orders",
     emptyList: "No orders yet.",
+    adminAsk: "How many orders today?",
   },
   studio: {
     key: "studio",
@@ -22,6 +23,7 @@ const SHOPS = {
     greeting: "When would you like to come in?",
     listLabel: "My bookings",
     emptyList: "No bookings yet.",
+    adminAsk: "How many bookings this week?",
   },
 };
 
@@ -155,6 +157,104 @@ function Gate({ onOpen }) {
         <span className="door-button">Enter</span>
       </a>
     </main>
+  );
+}
+
+function AdminChat({ shop, token }) {
+  const [turns, setTurns] = useState([]);
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+  const stopRef = useRef(null);
+
+  function patchLast(change) {
+    setTurns((rows) => {
+      const next = rows.slice();
+      const last = next[next.length - 1];
+      if (!last || last.role !== "assistant") return rows;
+      next[next.length - 1] = change(last);
+      return next;
+    });
+  }
+
+  async function ask() {
+    const message = draft.trim();
+    if (!message || sending) return;
+    const controller = new AbortController();
+    stopRef.current = controller;
+    setDraft("");
+    setError("");
+    setSending(true);
+    setTurns((rows) => [
+      ...rows,
+      { role: "user", text: message, tools: [] },
+      { role: "assistant", text: "", tools: [] },
+    ]);
+    try {
+      const reply = await api.adminChatStream(token, shop.slug, message, {
+        signal: controller.signal,
+        onEvent(event) {
+          if (event.type === "token" && event.text) {
+            patchLast((last) => ({ ...last, text: `${last.text}${event.text}` }));
+          }
+          if (event.type === "tool" && event.name) {
+            patchLast((last) => (last.tools.includes(event.name) ? last : { ...last, tools: [...last.tools, event.name] }));
+          }
+        },
+      });
+      patchLast((last) => ({
+        ...last,
+        text: last.text || reply.text || "",
+        tools: reply.tools?.length ? reply.tools : last.tools,
+      }));
+    } catch (err) {
+      if (err.name === "AbortError") return;
+      setError(err.message || "The question did not send.");
+      setTurns((rows) => {
+        const last = rows[rows.length - 1];
+        return last?.role === "assistant" && !last.text.trim() ? rows.slice(0, -1) : rows;
+      });
+    } finally {
+      if (stopRef.current === controller) stopRef.current = null;
+      setSending(false);
+    }
+  }
+
+  function onKeyDown(event) {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      ask();
+    }
+  }
+
+  return (
+    <section className="admin-desk">
+      <h2>Ask the admin analyst</h2>
+      <p className="empty">Read-only. Answers only about {shop.name}. Times are Asia/Kathmandu.</p>
+      {turns.length ? (
+        <div className="messages">
+          {turns.map((turn, index) => (
+            <article key={index} className={`bubble ${turn.role}`}>
+              <p>{turn.text || (sending && index === turns.length - 1 ? "Thinking..." : "")}</p>
+              {turn.tools.map((tool) => <span key={tool} className="tool">{tool}</span>)}
+            </article>
+          ))}
+        </div>
+      ) : null}
+      {error ? <p className="error">{error}</p> : null}
+      <div className="composer">
+        <textarea
+          value={draft}
+          placeholder={shop.adminAsk}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={onKeyDown}
+        />
+        <div className="send-row">
+          <button type="button" className="send" onClick={ask} disabled={sending}><Icon name="send" />{sending ? "Sending..." : "Send"}</button>
+          {sending ? <button type="button" className="stop" onClick={() => stopRef.current?.abort()}>Stop</button> : null}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -480,7 +580,7 @@ function ShopScreen({ shop, onHome }) {
         <header className="top">
           <button type="button" className="text-button" onClick={onHome}><Icon name="arrow" />Both shops</button>
           <h1>{shop.name}</h1>
-          <p>Admin desk. No chat. Shop activity only.</p>
+          <p>Admin desk. Read-only shop activity and stats.</p>
           <button type="button" className="text-button" onClick={onLogout}><Icon name="logout" />Log out</button>
         </header>
         <div className="band" />
@@ -547,6 +647,7 @@ function ShopScreen({ shop, onHome }) {
             </table>
           )}
         </section>
+        <AdminChat shop={shop} token={token} />
       </main>
     );
   }
